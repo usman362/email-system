@@ -963,16 +963,30 @@ function toHtml(text, trackId, sigBase64 = null, sigMime = 'image/png') {
   // Split on blank lines → paragraphs. Single \n within a paragraph = <br>.
   // This produces tight, Gmail-style spacing regardless of how many blank
   // lines the user typed between paragraphs.
-  const paragraphs = String(text || '')
-    .replace(/\r\n/g, '\n')
+  const raw = String(text || '').replace(/\r\n/g, '\n');
+
+  // Detect signature marker "--" (standard email convention).
+  // Everything after it is collapsed into one tight block (no paragraph gaps).
+  const sigIdx = raw.search(/(^|\n)\s*--\s*(\n|$)/);
+  const bodyPart = sigIdx >= 0 ? raw.slice(0, sigIdx) : raw;
+  const sigPart  = sigIdx >= 0 ? raw.slice(sigIdx).replace(/^(\n)?\s*--\s*\n?/, '') : '';
+
+  const paragraphs = bodyPart
     .split(/\n\s*\n+/)
     .map(p => p.trim())
     .filter(Boolean);
 
-  const lines = paragraphs.map(p => {
+  const pStyle = 'margin:0 0 10px;font-family:Arial,sans-serif;font-size:14px;line-height:1.5;color:#333';
+  let lines = paragraphs.map(p => {
     const inner = p.split('\n').map(l => l.trim()).filter(Boolean).join('<br>');
-    return `<p style="margin:0 0 10px;font-family:Arial,sans-serif;font-size:14px;line-height:1.5;color:#333">${inner}</p>`;
+    return `<p style="${pStyle}">${inner}</p>`;
   }).join('');
+
+  // Render signature block tight: all non-empty lines joined with <br>, no gaps.
+  if (sigPart.trim()) {
+    const sigLines = sigPart.split('\n').map(l => l.trim()).filter(Boolean).join('<br>');
+    lines += `<p style="${pStyle};margin-top:14px">${sigLines}</p>`;
+  }
 
   const sigHtml = sigBase64
     ? `<div style="margin-top:18px;padding-top:14px;border-top:1px solid #e5e5e5">
