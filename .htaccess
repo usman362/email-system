@@ -1,0 +1,4 @@
+PassengerAppType node
+PassengerStartupFile app.js
+PassengerAppRoot /home/bxlpubcrawl/email.bxlpubcrawl.com
+PassengerNodejs /home/bxlpubcrawl/nodevenv/email.bxlpubcrawl.com/20/bin/node
