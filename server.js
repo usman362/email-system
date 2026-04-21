@@ -960,10 +960,19 @@ setTimeout(async () => {
 //  HELPERS
 // ═══════════════════════════════════════════════════════════
 function toHtml(text, trackId, sigBase64 = null, sigMime = 'image/png') {
-  const lines = text.split('\n').map(l =>
-    l ? `<p style="margin:0 0 12px;font-family:Arial,sans-serif;font-size:14px;line-height:1.7;color:#333">${l}</p>`
-      : '<br>'
-  ).join('');
+  // Split on blank lines → paragraphs. Single \n within a paragraph = <br>.
+  // This produces tight, Gmail-style spacing regardless of how many blank
+  // lines the user typed between paragraphs.
+  const paragraphs = String(text || '')
+    .replace(/\r\n/g, '\n')
+    .split(/\n\s*\n+/)
+    .map(p => p.trim())
+    .filter(Boolean);
+
+  const lines = paragraphs.map(p => {
+    const inner = p.split('\n').map(l => l.trim()).filter(Boolean).join('<br>');
+    return `<p style="margin:0 0 10px;font-family:Arial,sans-serif;font-size:14px;line-height:1.5;color:#333">${inner}</p>`;
+  }).join('');
 
   const sigHtml = sigBase64
     ? `<div style="margin-top:18px;padding-top:14px;border-top:1px solid #e5e5e5">
