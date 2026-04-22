@@ -676,11 +676,10 @@ async function runCampaign(campId, userId, leads, noWT, wT) {
       break;
     }
     const tpl   = (lead.hasWiki && wT) ? wT : noWT;
-    const fName = lead.name.split(' ')[0];
-    const body  = tpl.body.replace(/{{name}}/g,lead.name).replace(/{{first_name}}/g,fName);
-    const subj  = tpl.subject.replace(/{{name}}/g,lead.name).replace(/{{first_name}}/g,fName);
-    const trkId = uuid();
     const user  = getDB().users.find(u=>u.id===userId);
+    const body  = applyVars(tpl.body, lead, user);
+    const subj  = applyVars(tpl.subject, lead, user);
+    const trkId = uuid();
     const sigB64 = user.signatureBase64 || null;
     const sigMime= user.signatureMime   || 'image/png';
     const html  = toHtml(body, trkId, sigB64, sigMime);
@@ -888,9 +887,8 @@ async function _runFollowupSchedulerInner() {
 
     // ── ACTUAL SEND (outside DB lock window) ──
     const { user, fuTpl, email, prev, campId } = reserved;
-    const fName = email.name.split(' ')[0];
-    const body  = fuTpl.body.replace(/{{name}}/g, email.name).replace(/{{first_name}}/g, fName);
-    const subj  = fuTpl.subject.replace(/{{name}}/g, email.name).replace(/{{first_name}}/g, fName);
+    const body  = applyVars(fuTpl.body, email, user);
+    const subj  = applyVars(fuTpl.subject, email, user);
     const sigB64 = user.signatureBase64 || null;
     const sigMime = user.signatureMime || 'image/png';
     const html  = toHtml(body, uuid(), sigB64, sigMime);
@@ -959,6 +957,23 @@ setTimeout(async () => {
 // ═══════════════════════════════════════════════════════════
 //  HELPERS
 // ═══════════════════════════════════════════════════════════
+// Replace template variables with recipient + sender data.
+// Recipient (lead):  {{name}}  {{first_name}}
+// Sender (logged-in user):  {{sender_name}}  {{sender_first_name}}  {{my_name}}
+function applyVars(text, lead, user) {
+  if (!text) return '';
+  const rName = lead && lead.name ? String(lead.name) : '';
+  const rFirst = rName.split(' ')[0] || '';
+  const sName = user && user.name ? String(user.name) : '';
+  const sFirst = sName.split(' ')[0] || '';
+  return String(text)
+    .replace(/\{\{\s*name\s*\}\}/g, rName)
+    .replace(/\{\{\s*first_name\s*\}\}/g, rFirst)
+    .replace(/\{\{\s*sender_name\s*\}\}/g, sName)
+    .replace(/\{\{\s*sender_first_name\s*\}\}/g, sFirst)
+    .replace(/\{\{\s*my_name\s*\}\}/g, sName);
+}
+
 function toHtml(text, trackId, sigBase64 = null, sigMime = 'image/png') {
   // Split on blank lines → paragraphs. Single \n within a paragraph = <br>.
   // This produces tight, Gmail-style spacing regardless of how many blank
