@@ -486,6 +486,110 @@ app.get('/api/campaigns/:id/followups', auth, (req, res) => {
   res.json(rows);
 });
 
+// ─── Manual follow-up send ───────────────────────────────────────────────────
+// POST /api/campaigns/:id/send-followups
+// Body: { step: 1-5, emailIds: ['id1','id2',...] }
+// Sends follow-up step N as a REPLY to the last sent email for each lead.
+// Respects daily limit. Skips replied/already-on-this-step leads.
+app.post('/api/campaigns/:id/send-followups', auth, async (req, res) => {
+  const { step, emailIds } = req.body;
+  if (!step || !Array.isArray(emailIds) || emailIds.length === 0)
+    return res.status(400).json({ error: 'step and emailIds[] required' });
+  const stepNum = parseInt(step);
+  if (stepNum < 1 || stepNum > 5)
+    return res.status(400).json({ error: 'step must be 1-5' });
+
+  const db = getDB();
+  const camp = db.campaigns.find(c => c.id === req.params.id && c.userId === req.user.id);
+  if (!camp) return res.status(404).json({ error: 'Campaign not found' });
+  const user = db.users.find(u => u.id === req.user.id);
+  if (!user || !user.email || !user.password)
+    return res.status(400).json({ error: 'Account email/password not configured' });
+  const fuTpl = db.followupTemplates.find(f => f.step === stepNum);
+  if (!fuTpl) return res.status(400).json({ error: `No template for step ${stepNum}` });
+
+  // Send asynchronously — return immediately with job count
+  const targetIds = new Set(emailIds);
+  const targets = (camp.emails || []).filter(e => targetIds.has(e.id) && e.delivered && !e.replied && (e.followupsSent || 0) < stepNum);
+  if (targets.length === 0)
+    return res.json({ queued: 0, message: 'No eligible leads' });
+
+  res.json({ queued: targets.length, message: `Sending ${targets.length} follow-up(s) in background…` });
+
+  // Run sends in background
+  (async () => {
+    for (const emailRec of targets) {
+      try {
+        const dbNow = getDB();
+        const campNow = dbNow.campaigns.find(c => c.id === camp.id);
+        const eNow = campNow && (campNow.emails || []).find(e => e.id === emailRec.id);
+        const uNow = dbNow.users.find(u => u.id === user.id);
+        if (!eNow || !uNow) continue;
+        if (eNow.replied) continue;
+        if ((eNow.followupsSent || 0) >= stepNum) continue; // already sent this step
+
+        // Daily limit check
+        const today = new Date().toDateString();
+        if (uNow.lastReset !== today) { uNow.dailySent = 0; uNow.lastReset = today; }
+        if ((uNow.dailySent || 0) >= cfg.DAILY_LIMIT) {
+          console.log(`  Daily limit hit for ${uNow.email}, stopping manual followups`);
+          saveDB(dbNow);
+          break;
+        }
+
+        const body  = applyVars(fuTpl.body, eNow, uNow);
+        const origSubj = eNow.sentSubject || fuTpl.subject;
+        // Strip any existing Re: prefix then add one — ensures exact subject match for threading
+        const bareSubj = origSubj.replace(/^(Re:\s*)+/i,'').trim();
+        const subj  = `Re: ${bareSubj}`;
+        const sigB64 = uNow.signatureBase64 || null;
+        const sigMime = uNow.signatureMime || 'image/png';
+        const html  = toHtml(body, uuid(), sigB64, sigMime);
+        // Pre-generate new Message-ID for this follow-up
+        const newMsgId = genMsgId();
+        const threadOpts = { messageId: newMsgId };
+        if (eNow.lastMessageId) {
+          threadOpts.inReplyTo  = eNow.lastMessageId;
+          // References = full chain from original to last
+          const refs = [eNow.messageId, eNow.lastMessageId].filter(Boolean);
+          if (!refs.includes(eNow.lastMessageId)) refs.push(eNow.lastMessageId);
+          threadOpts.references = refs.join(' ');
+        }
+
+        try {
+          const tr = createMailTransport(uNow.email, uNow.password);
+          await tr.sendMail(buildMailOptions(`${uNow.name} <${uNow.email}>`, eNow.email, subj, body, html, sigB64, sigMime, threadOpts));
+          try { tr.close(); } catch(_) {}
+          console.log(`  ↳ Manual FU${stepNum} → ${eNow.email}`);
+        } catch (sendErr) {
+          console.error(`  ↳ Manual FU${stepNum} failed ${eNow.email}: ${sendErr.message}`);
+          continue;
+        }
+
+        // Commit to DB
+        const dbCommit = getDB();
+        const campCommit = dbCommit.campaigns.find(c => c.id === camp.id);
+        const eCommit = campCommit && (campCommit.emails || []).find(e => e.id === emailRec.id);
+        const uCommit = dbCommit.users.find(u => u.id === user.id);
+        if (eCommit && uCommit) {
+          eCommit.followupsSent  = stepNum;
+          eCommit.lastFollowupAt = new Date().toISOString();
+          eCommit.lastMessageId = newMsgId;
+          uCommit.dailySent = (uCommit.dailySent || 0) + 1;
+          uCommit.lastReset = today;
+          if (!campCommit.log) campCommit.log = [];
+          campCommit.log.push({ time: new Date().toISOString(), msg: `📬 Follow-up ${stepNum} sent → ${eCommit.name} <${eCommit.email}>`, type: 'followup' });
+          saveDB(dbCommit);
+        }
+        await sleep(45000); // 45s delay between sends
+      } catch (err) {
+        console.error('Manual FU error:', err.message);
+      }
+    }
+    console.log(`  ✅ Manual FU${stepNum} batch complete`);
+  })();
+});
+
 // Start campaign
 app.post('/api/campaigns/start', auth, upload.single('leadsFile'), async (req, res) => {
   const { name, noWikiTemplateId, wikiTemplateId } = req.body;
@@ -683,10 +787,12 @@ async function runCampaign(campId, userId, leads, noWT, wT) {
     const sigB64 = user.signatureBase64 || null;
     const sigMime= user.signatureMime   || 'image/png';
     const html  = toHtml(body, trkId, sigB64, sigMime);
+    // Pre-generate Message-ID so we store exactly what was sent
+    const msgId = genMsgId();
     let ok = false;
     try {
       const tr = createMailTransport(user.email, user.password);
-      await tr.sendMail(buildMailOptions(`${user.name} <${user.email}>`, lead.email, subj, body, html, sigB64, sigMime));
+      await tr.sendMail(buildMailOptions(`${user.name} <${user.email}>`, lead.email, subj, body, html, sigB64, sigMime, { messageId: msgId }));
       ok = true;
     } catch(e) {
       const db2 = getDB(); const ci=db2.campaigns.findIndex(c=>c.id===campId);
@@ -695,7 +801,7 @@ async function runCampaign(campId, userId, leads, noWT, wT) {
     if (ok) {
       const db2=getDB(); const ci=db2.campaigns.findIndex(c=>c.id===campId); const ui=db2.users.findIndex(u=>u.id===userId);
       db2.campaigns[ci].emailsSent+=1; db2.campaigns[ci].log.push({ time:new Date().toISOString(), msg:`✓ Sent → ${lead.name} <${lead.email}>`, type:'success' });
-      db2.campaigns[ci].emails.push({ id:uuid(),trackId:trkId,name:lead.name,email:lead.email,sentAt:new Date().toISOString(),delivered:true,opens:[],followupsSent:0,lastFollowupAt:null });
+      db2.campaigns[ci].emails.push({ id:uuid(),trackId:trkId,name:lead.name,email:lead.email,sentAt:new Date().toISOString(),delivered:true,opens:[],followupsSent:0,lastFollowupAt:null,messageId:msgId,lastMessageId:msgId,sentSubject:subj });
       db2.users[ui].dailySent=(db2.users[ui].dailySent||0)+1; db2.users[ui].lastReset=today;
       saveDB(db2);
     }
@@ -882,21 +988,32 @@ async function _runFollowupSchedulerInner() {
       user.dailySent       = (user.dailySent || 0) + 1;
       saveDB(db);
 
-      reserved = { user, fuTpl, email: { id: email.id, name: email.name, email: email.email }, prev, campId: camp.id };
+      reserved = { user, fuTpl, email: { id: email.id, name: email.name, email: email.email, lastMessageId: email.lastMessageId||null, messageId: email.messageId||null, sentSubject: email.sentSubject||null }, prev, campId: camp.id };
     }
 
     // ── ACTUAL SEND (outside DB lock window) ──
     const { user, fuTpl, email, prev, campId } = reserved;
     const body  = applyVars(fuTpl.body, email, user);
-    const subj  = applyVars(fuTpl.subject, email, user);
+    // Strip existing Re: prefix then add one for clean threading
+    const origSubj = email.sentSubject || applyVars(fuTpl.subject, email, user);
+    const bareSubj = origSubj.replace(/^(Re:\s*)+/i,'').trim();
+    const subj  = `Re: ${bareSubj}`;
     const sigB64 = user.signatureBase64 || null;
     const sigMime = user.signatureMime || 'image/png';
     const html  = toHtml(body, uuid(), sigB64, sigMime);
+    // Pre-generate Message-ID for this follow-up
+    const fuMsgId = genMsgId();
+    const threadOpts = { messageId: fuMsgId };
+    if (email.lastMessageId) {
+      threadOpts.inReplyTo  = email.lastMessageId;
+      const refs = [email.messageId, email.lastMessageId].filter(Boolean);
+      threadOpts.references = refs.join(' ');
+    }
 
     let sendOk = false;
     try {
       const tr = createMailTransport(user.email, user.password);
-      await tr.sendMail(buildMailOptions(`${user.name} <${user.email}>`, email.email, subj, body, html, sigB64, sigMime));
+      await tr.sendMail(buildMailOptions(`${user.name} <${user.email}>`, email.email, subj, body, html, sigB64, sigMime, threadOpts));
       try { tr.close(); } catch(_) {}
       sendOk = true;
       console.log(`  ↳ Follow-up ${job.step} → ${email.email}`);
@@ -912,6 +1029,7 @@ async function _runFollowupSchedulerInner() {
       const user2 = db2.users.find(u => u.id === user.id);
       if (!email2 || !user2) continue;
       if (sendOk) {
+        email2.lastMessageId = fuMsgId;
         if (!camp2.log) camp2.log = [];
         camp2.log.push({ time: new Date().toISOString(), msg: `📬 Follow-up ${job.step} sent → ${email.name} <${email.email}>`, type: 'followup' });
         saveDB(db2);
@@ -929,11 +1047,10 @@ async function _runFollowupSchedulerInner() {
   }
 }
 
-// Follow-up scheduler every 30 minutes (weekend-only gated inside)
-setInterval(async () => {
-  console.log(`[${new Date().toLocaleTimeString()}] Running follow-up scheduler…`);
-  try { await runFollowupScheduler(); } catch(e) { console.error('Scheduler error:', e.message); }
-}, 30 * 60 * 1000);
+// Auto follow-up scheduler DISABLED — follow-ups are now sent manually via the UI
+// setInterval(async () => {
+//   try { await runFollowupScheduler(); } catch(e) { console.error('Scheduler error:', e.message); }
+// }, 30 * 60 * 1000);
 
 // Reply sync — runs EVERY DAY (not just weekends) every 15 minutes.
 // This is independent of follow-up sending so replies get detected
@@ -949,10 +1066,8 @@ setTimeout(async () => {
   try { await syncReplies(); } catch(e) { console.error('Startup reply sync error:', e.message); }
 }, 10000);
 
-setTimeout(async () => {
-  console.log('[Startup] Checking pending follow-ups…');
-  try { await runFollowupScheduler(); } catch(e) {}
-}, 30000);
+// Startup auto follow-up check DISABLED — follow-ups are manual now
+// setTimeout(async () => { try { await runFollowupScheduler(); } catch(e) {} }, 30000);
 
 // ═══════════════════════════════════════════════════════════
 //  HELPERS
@@ -1016,8 +1131,32 @@ function toHtml(text, trackId, sigBase64 = null, sigMime = 'image/png') {
   </div>`;
 }
 
-function buildMailOptions(from, to, subject, bodyText, htmlBody, sigBase64, sigMime) {
-  const opts = { from, to, subject, text: bodyText, html: htmlBody };
+function buildMailOptions(from, to, subject, bodyText, htmlBody, sigBase64, sigMime, threadOpts = {}) {
+  // Generate a stable Message-ID we control — critical for reply threading.
+  // Format: <uuid@gmail.com> — Gmail recognises the gmail.com domain.
+  const msgId = threadOpts.messageId || `<${uuid()}@gmail.com>`;
+
+  const opts = {
+    from, to, subject,
+    text: bodyText,
+    html: htmlBody,
+    // Explicitly set Message-ID so we know exactly what was sent
+    messageId: msgId,
+    // Reply threading headers — Gmail uses these to group into same thread
+    ...(threadOpts.inReplyTo  && { inReplyTo:  threadOpts.inReplyTo }),
+    ...(threadOpts.references && { references: threadOpts.references }),
+    // Extra headers to reduce spam score
+    headers: {
+      'X-Mailer': 'Mozilla/5.0',          // looks like a regular mail client
+      'X-Priority': '3',                  // Normal priority (not bulk)
+      ...(threadOpts.inReplyTo && {
+        // These extra headers help Gmail thread properly
+        'In-Reply-To': threadOpts.inReplyTo,
+        'References':  threadOpts.references || threadOpts.inReplyTo,
+      }),
+    },
+  };
+
   if (sigBase64) {
     opts.attachments = [{
       filename: 'signature.png',
@@ -1028,6 +1167,9 @@ function buildMailOptions(from, to, subject, bodyText, htmlBody, sigBase64, sigM
   }
   return opts;
 }
+
+// Generate a Message-ID in the format Gmail expects
+function genMsgId() { return `<${uuid()}@gmail.com>`; }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 

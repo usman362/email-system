@@ -593,7 +593,7 @@ code { font-family: var(--mono); background: rgba(255,255,255,.06); padding: 2px
           <div class="table-wrap" id="an-table-wrap" style="display:none">
             <table>
               <thead><tr>
-                <th>#</th><th>Name</th><th>Email</th><th>Sent</th><th>Status</th><th>Opens</th><th>Replied</th><th>First Seen</th><th>Last Seen</th><th>History</th><th>Follow-ups</th>
+                <th>#</th><th>Name</th><th>Email</th><th>Sent</th><th>Status</th><th>Opens</th><th>Replied</th><th>First Seen</th><th>Last Seen</th><th>History</th><th>Sequence</th>
               </tr></thead>
               <tbody id="an-tbody"></tbody>
             </table>
@@ -655,82 +655,80 @@ code { font-family: var(--mono); background: rgba(255,255,255,.06); padding: 2px
       <div id="page-followups" class="page">
         <div class="page-header flex-between">
           <div>
-            <h1>Follow-up Automation</h1>
-            <p>5 automated follow-ups · every <span id="fu-interval">5</span> days · per lead</p>
+            <h1>Follow-up Sender</h1>
+            <p>Manually send follow-ups · emails go as reply in the same thread</p>
           </div>
-          <button class="btn btn-gold" onclick="openModal('fu-edit-modal')">✏️ Edit Follow-up Templates</button>
+          <button class="btn btn-gold" onclick="openModal('fu-edit-modal')">✏️ Edit Templates</button>
         </div>
 
-        <!-- Pipeline visual -->
+        <!-- Step 1: Choose campaign + follow-up step -->
         <div class="card">
-          <div class="card-header"><h2>Follow-up Sequence</h2><span class="card-header sub">Sent automatically every 5 days</span></div>
-          <div class="fu-pipeline">
-            <div class="fu-step active-step">
-              <div class="step-num">1</div>
-              <div class="step-label">Day 5</div>
-              <div class="step-count" id="fu-c1">—</div>
-              <div class="step-sent">sent</div>
-            </div>
-            <div class="fu-connector">→</div>
-            <div class="fu-step">
-              <div class="step-num">2</div>
-              <div class="step-label">Day 10</div>
-              <div class="step-count" id="fu-c2">—</div>
-              <div class="step-sent">sent</div>
-            </div>
-            <div class="fu-connector">→</div>
-            <div class="fu-step">
-              <div class="step-num">3</div>
-              <div class="step-label">Day 15</div>
-              <div class="step-count" id="fu-c3">—</div>
-              <div class="step-sent">sent</div>
-            </div>
-            <div class="fu-connector">→</div>
-            <div class="fu-step">
-              <div class="step-num">4</div>
-              <div class="step-label">Day 20</div>
-              <div class="step-count" id="fu-c4">—</div>
-              <div class="step-sent">sent</div>
-            </div>
-            <div class="fu-connector">→</div>
-            <div class="fu-step">
-              <div class="step-num">5</div>
-              <div class="step-label">Day 25</div>
-              <div class="step-count" id="fu-c5">—</div>
-              <div class="step-sent">sent</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Per-campaign follow-up status -->
-        <div class="card">
-          <div class="card-header">
-            <h2>Campaign Follow-up Status</h2>
-            <select class="form-control" id="fu-camp-sel" onchange="loadFuStatus()" style="width:280px">
-              <option value="">— Select Campaign —</option>
-            </select>
-          </div>
-          <div id="fu-table-wrap" style="display:none">
-            <div class="flex-between gap-8" style="margin-bottom:14px;flex-wrap:wrap">
-              <input class="form-control" id="fu-search" type="text" placeholder="🔍 Search…" oninput="filterFuTable()" style="width:240px"/>
-              <select class="form-control" id="fu-filter" onchange="filterFuTable()" style="width:180px">
-                <option value="">All</option>
-                <option value="due">Due Now</option>
-                <option value="pending">Pending</option>
-                <option value="completed">Completed</option>
+          <div class="card-header"><h2>1 · Select Campaign &amp; Step</h2></div>
+          <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;padding:4px 0 8px">
+            <div>
+              <label class="form-label">Campaign</label>
+              <select class="form-control" id="fu-camp-sel" onchange="loadFuLeads()" style="width:300px">
+                <option value="">— Select Campaign —</option>
               </select>
             </div>
-            <div class="table-wrap">
-              <table>
-                <thead><tr>
-                  <th>#</th><th>Name</th><th>Email</th><th>FU Sent</th><th>Last Follow-up</th><th>Next Follow-up</th><th>Status</th>
-                </tr></thead>
-                <tbody id="fu-tbody"></tbody>
-              </table>
+            <div>
+              <label class="form-label">Follow-up Step</label>
+              <div style="display:flex;gap:6px">
+                <button class="btn btn-sm fu-step-btn btn-ghost" id="fu-step-btn-1" onclick="selectFuStep(1)" style="min-width:54px;font-weight:600">FU 1</button>
+                <button class="btn btn-sm fu-step-btn btn-ghost" id="fu-step-btn-2" onclick="selectFuStep(2)" style="min-width:54px;font-weight:600">FU 2</button>
+                <button class="btn btn-sm fu-step-btn btn-ghost" id="fu-step-btn-3" onclick="selectFuStep(3)" style="min-width:54px;font-weight:600">FU 3</button>
+                <button class="btn btn-sm fu-step-btn btn-ghost" id="fu-step-btn-4" onclick="selectFuStep(4)" style="min-width:54px;font-weight:600">FU 4</button>
+                <button class="btn btn-sm fu-step-btn btn-ghost" id="fu-step-btn-5" onclick="selectFuStep(5)" style="min-width:54px;font-weight:600">FU 5</button>
+              </div>
             </div>
           </div>
-          <div id="fu-empty" class="empty-state"><div class="ei">🔄</div><p>Select a campaign to see follow-up status</p></div>
         </div>
+
+        <!-- Step 2: Lead table with checkboxes -->
+        <div class="card" id="fu-leads-card" style="display:none">
+          <div class="card-header flex-between">
+            <h2>2 · Select Recipients</h2>
+            <div style="display:flex;gap:8px;align-items:center">
+              <span id="fu-sel-count" style="font-size:13px;color:var(--muted)">0 selected</span>
+              <button class="btn btn-ghost btn-sm" onclick="fuSelectAll()">Select All</button>
+              <button class="btn btn-ghost btn-sm" onclick="fuSelectNone()">None</button>
+              <button class="btn btn-ghost btn-sm" onclick="fuSelectOpened()">Opened Only</button>
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
+            <input class="form-control" id="fu-search" type="text" placeholder="🔍 Search…" oninput="filterFuTable()" style="width:240px"/>
+            <select class="form-control" id="fu-filter" onchange="filterFuTable()" style="width:200px">
+              <option value="">All delivered</option>
+              <option value="not-sent">Not sent this step yet</option>
+              <option value="opened">Opened previous email</option>
+              <option value="replied">Already replied</option>
+            </select>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th style="width:36px"><input type="checkbox" id="fu-chk-all" onchange="fuToggleAll(this.checked)" title="Select all visible"/></th>
+                <th>#</th><th>Name</th><th>Email</th><th>Sequence</th><th>Opens</th><th>Status</th>
+              </tr></thead>
+              <tbody id="fu-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Step 3: Send button -->
+        <div id="fu-send-bar" style="display:none;position:sticky;bottom:20px;z-index:10;margin-top:16px;transition:opacity 0.2s">
+          <div class="card" style="background:var(--surface2);border:1.5px solid var(--gold);padding:14px 20px;display:flex;align-items:center;justify-content:space-between;gap:16px">
+            <div>
+              <span id="fu-send-summary" style="font-weight:600;font-size:15px;color:var(--gold)">0 leads selected</span>
+              <span style="color:var(--muted);font-size:13px;margin-left:10px">· replies go in same email thread</span>
+            </div>
+            <button class="btn btn-gold" id="fu-send-btn" onclick="sendFollowups()" style="min-width:160px">
+              📬 Send Follow-ups
+            </button>
+          </div>
+        </div>
+
+        <div id="fu-empty" class="empty-state"><div class="ei">🔄</div><p>Select a campaign and follow-up step above</p></div>
       </div>
 
       <!-- ── TEMPLATES ── -->
@@ -1016,7 +1014,7 @@ function showPage(name) {
   const pages = {
     dashboard:loadDashboard, analytics:loadAnCampaigns,
     campaigns:()=>{loadTplDropdowns();loadCampaigns()},
-    followups:()=>{loadFuTemplates();loadFuCampaigns();loadFuStats()},
+    followups:()=>{loadFuTemplates();loadFuCampaigns();},
     templates:loadTemplates,
     signature:loadSignature,
     deploy:loadDeployStatus
@@ -1273,7 +1271,14 @@ function renderAnRows(rows){
         ?`<span class="badge b-green" title="${e.repliedAt?fmtDT(e.repliedAt):''}">💬 Replied</span>`
         :'<span class="badge b-muted">No reply</span>';
     const dots=(e.openHistory||[]).map(o=>`<div class="open-dot" title="${fmtDT(o.time)}"></div>`).join('');
-    const fuB=e.followupsSent>0?`<span class="badge b-gold">${e.followupsSent}/5</span>`:'<span class="badge b-muted">0/5</span>';
+    // Sequence column: show each step pill — filled if sent, ghost if not
+    const fu = e.followupsSent || 0;
+    const seqPills = e.delivered
+      ? `<div style="display:flex;gap:3px;flex-wrap:wrap;align-items:center">
+          <span class="badge b-blue" title="Initial email sent">Init</span>
+          ${[1,2,3,4,5].map(s=>`<span class="badge ${fu>=s?'b-gold':'b-muted'}" title="Follow-up ${s}${fu>=s?' sent':' not sent'}">FU${s}</span>`).join('')}
+        </div>`
+      : '<span class="badge b-red">Failed</span>';
     return`<tr>
       <td class="td-mono">${i+1}</td>
       <td class="td-name">${esc(e.name)}</td>
@@ -1285,85 +1290,160 @@ function renderAnRows(rows){
       <td class="td-muted">${e.firstOpened?fmtDT(e.firstOpened):'—'}</td>
       <td class="td-muted">${e.lastOpened ?fmtDT(e.lastOpened) :'—'}</td>
       <td><div class="open-dots">${dots||'<span style="color:var(--muted);font-size:11px">—</span>'}</div></td>
-      <td>${fuB}</td>
+      <td>${seqPills}</td>
     </tr>`;
   }).join('');
 }
 
-// ── FOLLOW-UPS ────────────────────────────────────────────────────────────────
-async function loadFuStats(){
-  try{
-    const stats=await api('/api/stats');
-    const camps=await api('/api/campaigns');
-    // Count per step across all campaigns
-    const counts=[0,0,0,0,0];
-    for(const c of camps){
-      // we don't have per-step breakdown in list API, so just sum totalFollowups
-    }
-    // Use analytics of all campaigns to get step counts — approximate from totalFollowups
-    for(let i=1;i<=5;i++) el('fu-c'+i).textContent='…';
-    // load all campaign analytics to get real counts
-    let s=[0,0,0,0,0];
-    for(const c of camps){
-      try{
-        const d=await api('/api/campaigns/'+c.id+'/analytics');
-        for(const e of d.emails){
-          const n=e.followupsSent||0;
-          for(let i=0;i<n;i++) s[i]++;
-        }
-      }catch(e2){}
-    }
-    for(let i=0;i<5;i++) el('fu-c'+(i+1)).textContent=s[i];
-  }catch(e){}
-}
+// ── FOLLOW-UPS (MANUAL SENDER) ────────────────────────────────────────────────
+let fuStep = 1;          // currently selected step
+// fuAllRows already declared above in global scope
+let fuChecked = new Set(); // set of email IDs currently checked
+
 async function loadFuCampaigns(){
   try{
     campaigns=await api('/api/campaigns');
     const sel=el('fu-camp-sel');
     sel.innerHTML='<option value="">— Select Campaign —</option>'+
       campaigns.slice().reverse().map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
+    // Highlight step 1 by default
+    selectFuStep(1,false);
   }catch(e){}
 }
-async function loadFuStatus(){
-  const id=v('fu-camp-sel'); if(!id)return;
+
+function selectFuStep(s, reload=true){
+  fuStep=s;
+  document.querySelectorAll('.fu-step-btn').forEach((b,i)=>{
+    b.classList.toggle('btn-gold',i+1===s);
+    b.classList.toggle('btn-ghost',i+1!==s);
+  });
+  if(reload && v('fu-camp-sel')) loadFuLeads();
+}
+
+async function loadFuLeads(){
+  const id=v('fu-camp-sel');
+  if(!id){ el('fu-leads-card').style.display='none'; el('fu-send-bar').style.display='none'; el('fu-empty').style.display=''; return; }
   try{
-    const rows=await api('/api/campaigns/'+id+'/followups');
-    fuAllRows=rows;
-    el('fu-table-wrap').style.display=''; el('fu-empty').style.display='none';
+    const d=await api('/api/campaigns/'+id+'/analytics');
+    fuAllRows=d.emails.filter(e=>e.delivered);
+    fuChecked=new Set();
+    el('fu-leads-card').style.display='';
+    el('fu-send-bar').style.display=''; // always show send bar once campaign selected
+    el('fu-empty').style.display='none';
+    updateStepCounts(); // show eligible counts on buttons
     filterFuTable();
   }catch(e){toast(e.message,'err');}
 }
+
+// Show how many leads are eligible per step on the buttons
+function updateStepCounts(){
+  for(let s=1;s<=5;s++){
+    const eligible=fuAllRows.filter(r=>!r.replied&&(r.followupsSent||0)<s).length;
+    const btn=el('fu-step-btn-'+s);
+    if(btn) btn.textContent=`FU ${s}  (${eligible})`;
+  }
+}
+
 function filterFuTable(){
   const q=v('fu-search').toLowerCase(), f=v('fu-filter');
-  let rows=fuAllRows;
+  let rows=[...fuAllRows];
   if(q) rows=rows.filter(r=>r.name.toLowerCase().includes(q)||r.email.toLowerCase().includes(q));
-  if(f==='due')       rows=rows.filter(r=>r.isDue);
-  if(f==='pending')   rows=rows.filter(r=>!r.completed&&!r.isDue);
-  if(f==='completed') rows=rows.filter(r=>r.completed);
+  if(f==='not-sent')  rows=rows.filter(r=>(r.followupsSent||0)<fuStep && !r.replied);
+  if(f==='opened')    rows=rows.filter(r=>(r.opensCount||0)>0 && !r.replied);
+  if(f==='replied')   rows=rows.filter(r=>r.replied);
   renderFuRows(rows);
 }
+
 function renderFuRows(rows){
   const tbody=el('fu-tbody');
-  if(!rows.length){tbody.innerHTML='<tr><td colspan="7"><div class="empty-state"><p>No results</p></div></td></tr>';return;}
+  if(!rows.length){tbody.innerHTML=`<tr><td colspan="8"><div class="empty-state"><p>No leads match filter</p></div></td></tr>`;updateFuCount();return;}
   tbody.innerHTML=rows.map((r,i)=>{
-    const stB=r.completed?'<span class="badge b-green">Completed</span>'
-      :r.isDue?'<span class="badge b-orange">⚡ Due Now</span>'
-      :'<span class="badge b-muted">Pending</span>';
-    const prog=`<div style="display:flex;align-items:center;gap:8px">
-      <div class="prog-track" style="width:80px"><div class="prog-fill" style="width:${(r.followupsSent/5)*100}%"></div></div>
-      <span class="td-muted">${r.followupsSent}/5</span>
+    const fu=r.followupsSent||0;
+    const seq=`<div style="display:flex;gap:3px;flex-wrap:wrap">
+      <span class="badge b-blue" style="font-size:10px">Init</span>
+      ${[1,2,3,4,5].map(s=>`<span class="badge ${fu>=s?'b-gold':'b-muted'}" style="font-size:10px">FU${s}</span>`).join('')}
     </div>`;
-    return`<tr>
+    const openB=r.opensCount>0?`<span class="badge b-purple">${r.opensCount}×</span>`:'<span class="badge b-muted">—</span>';
+    // Status for current step
+    let statusB, disabled='', rowStyle='';
+    if(r.replied){
+      statusB='<span class="badge b-green">💬 Replied</span>';
+      disabled='disabled'; rowStyle='opacity:0.4';
+    } else if(fu>=fuStep){
+      statusB=`<span class="badge b-gold">✓ FU${fuStep} sent</span>`;
+      disabled='disabled'; rowStyle='opacity:0.55';
+    } else {
+      statusB=`<span class="badge b-orange">⚡ Eligible FU${fuStep}</span>`;
+    }
+    const checked=fuChecked.has(r.id)?'checked':'';
+    return`<tr style="${rowStyle}">
+      <td><input type="checkbox" class="fu-chk" data-id="${r.id}" ${checked} ${disabled} onchange="fuToggleOne(this)"/></td>
       <td class="td-mono">${i+1}</td>
       <td class="td-name">${esc(r.name)}</td>
-      <td class="td-muted">${esc(r.email)}</td>
-      <td>${prog}</td>
-      <td class="td-muted">${r.lastFollowupAt?fmtDT(r.lastFollowupAt):'—'}</td>
-      <td class="td-muted" style="${r.isDue?'color:var(--orange);font-weight:600':''}">${r.nextFollowupAt?fmtDT(r.nextFollowupAt):'—'}</td>
-      <td>${stB}</td>
+      <td class="td-muted" style="font-size:12px">${esc(r.email)}</td>
+      <td>${seq}</td>
+      <td>${openB}</td>
+      <td>${statusB}</td>
     </tr>`;
   }).join('');
+  updateFuCount();
 }
+
+function fuToggleOne(chk){
+  const id=chk.dataset.id;
+  if(chk.checked) fuChecked.add(id); else fuChecked.delete(id);
+  updateFuCount();
+}
+function fuToggleAll(checked){
+  document.querySelectorAll('.fu-chk:not(:disabled)').forEach(c=>{ c.checked=checked; const id=c.dataset.id; if(checked) fuChecked.add(id); else fuChecked.delete(id); });
+  updateFuCount();
+}
+function fuSelectAll(){ el('fu-chk-all').checked=true; fuToggleAll(true); }
+function fuSelectNone(){ el('fu-chk-all').checked=false; fuToggleAll(false); }
+function fuSelectOpened(){
+  fuChecked=new Set();
+  document.querySelectorAll('.fu-chk:not(:disabled)').forEach(c=>{
+    // find matching row from fuAllRows
+    const row=fuAllRows.find(r=>r.id===c.dataset.id);
+    const shouldCheck=row&&(row.opensCount||0)>0&&!row.replied;
+    c.checked=shouldCheck;
+    if(shouldCheck) fuChecked.add(c.dataset.id);
+  });
+  updateFuCount();
+}
+function updateFuCount(){
+  const n=fuChecked.size;
+  const eligible=fuAllRows.filter(r=>!r.replied&&(r.followupsSent||0)<fuStep).length;
+  const alreadySent=fuAllRows.filter(r=>(r.followupsSent||0)>=fuStep).length;
+  const replied=fuAllRows.filter(r=>r.replied).length;
+  el('fu-sel-count').textContent=n+' selected';
+  // summary bar always visible when campaign loaded
+  el('fu-send-summary').innerHTML=
+    `<span style="color:var(--gold);font-weight:700">${n} selected</span>`+
+    `<span style="color:var(--muted);font-size:12px;margin-left:12px">`+
+    `⚡ ${eligible} eligible &nbsp;·&nbsp; ✓ ${alreadySent} already sent &nbsp;·&nbsp; 💬 ${replied} replied</span>`;
+  const btn=el('fu-send-btn');
+  if(btn){ btn.disabled=(n===0); btn.style.opacity=n>0?'1':'0.45'; }
+}
+
+async function sendFollowups(){
+  const campId=v('fu-camp-sel');
+  if(!campId) return toast('Select a campaign first','err');
+  const ids=[...fuChecked];
+  if(!ids.length) return toast('Select at least one lead','err');
+  const btn=el('fu-send-btn');
+  btn.disabled=true; btn.textContent='Sending…';
+  try{
+    const r=await api('/api/campaigns/'+campId+'/send-followups',{method:'POST',json:{step:fuStep,emailIds:ids}});
+    toast(`📬 ${r.queued} follow-up(s) queued (Follow-up ${fuStep}) — sending in background, 45s between each`,'ok');
+    fuChecked=new Set();
+    setTimeout(()=>loadFuLeads(),2000); // refresh table after 2s
+  }catch(e){ toast(e.message,'err'); }
+  finally{ btn.disabled=false; btn.textContent='📬 Send Follow-ups'; }
+}
+
+// keep legacy loadFuStats so page load doesn't crash
+function loadFuStats(){}
 
 // ── FOLLOW-UP TEMPLATE EDITOR ─────────────────────────────────────────────────
 async function loadFuTemplates(){
