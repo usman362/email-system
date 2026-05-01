@@ -518,24 +518,26 @@ app.post('/api/campaigns/:id/send-followups', auth, async (req, res) => {
 
   // Run sends in background
   (async () => {
+    console.log(`[FU] Starting manual FU${stepNum} — ${targets.length} targets, campaign: ${camp.id}`);
     for (const emailRec of targets) {
       try {
         const dbNow = getDB();
         const campNow = dbNow.campaigns.find(c => c.id === camp.id);
         const eNow = campNow && (campNow.emails || []).find(e => e.id === emailRec.id);
         const uNow = dbNow.users.find(u => u.id === user.id);
-        if (!eNow || !uNow) continue;
-        if (eNow.replied) continue;
-        if ((eNow.followupsSent || 0) >= stepNum) continue; // already sent this step
+        if (!eNow || !uNow) { console.log(`[FU] SKIP: eNow=${!!eNow} uNow=${!!uNow} id=${emailRec.id}`); continue; }
+        if (eNow.replied) { console.log(`[FU] SKIP replied: ${eNow.email}`); continue; }
+        if ((eNow.followupsSent || 0) >= stepNum) { console.log(`[FU] SKIP already sent FU${stepNum}: ${eNow.email}`); continue; }
 
         // Daily limit check
         const today = new Date().toDateString();
         if (uNow.lastReset !== today) { uNow.dailySent = 0; uNow.lastReset = today; }
         if ((uNow.dailySent || 0) >= cfg.DAILY_LIMIT) {
-          console.log(`  Daily limit hit for ${uNow.email}, stopping manual followups`);
+          console.log(`[FU] Daily limit hit (${uNow.dailySent}/${cfg.DAILY_LIMIT}) for ${uNow.email}, stopping`);
           saveDB(dbNow);
           break;
         }
+        console.log(`[FU] Attempting FU${stepNum} → ${eNow.email} (dailySent: ${uNow.dailySent||0}/${cfg.DAILY_LIMIT})`);
 
         const body  = applyVars(fuTpl.body, eNow, uNow);
         const origSubj = eNow.sentSubject || fuTpl.subject;
@@ -766,7 +768,7 @@ const activeCampaigns = {};
 async function runCampaign(campId, userId, leads, noWT, wT) {
   activeCampaigns[campId] = { running:true };
   for (let i=0; i<leads.length; i++) {
-    if (!activeCampaigns[campId]?.running) break;
+    if (!(activeCampaigns[campId] && activeCampaigns[campId].running)) break;
     const lead  = leads[i];
     const today = new Date().toDateString();
     let db = getDB();
@@ -774,7 +776,7 @@ async function runCampaign(campId, userId, leads, noWT, wT) {
     if (uIdx===-1) break;
     if (db.users[uIdx].lastReset!==today) { db.users[uIdx].dailySent=0; db.users[uIdx].lastReset=today; saveDB(db); }
     db = getDB();
-    if ((db.users.find(u=>u.id===userId)?.dailySent||0) >= cfg.DAILY_LIMIT) {
+    if (((db.users.find(u=>u.id===userId)||{}).dailySent||0) >= cfg.DAILY_LIMIT) {
       const ci = db.campaigns.findIndex(c=>c.id===campId);
       if (ci!==-1) { db.campaigns[ci].status='paused_daily_limit'; db.campaigns[ci].log.push({ time:new Date().toISOString(), msg:`Daily limit reached. Paused.`, type:'warn' }); saveDB(db); }
       break;
@@ -805,7 +807,7 @@ async function runCampaign(campId, userId, leads, noWT, wT) {
       db2.users[ui].dailySent=(db2.users[ui].dailySent||0)+1; db2.users[ui].lastReset=today;
       saveDB(db2);
     }
-    if (i<leads.length-1 && activeCampaigns[campId]?.running) await sleep(cfg.EMAIL_DELAY_SECONDS*1000);
+    if (i<leads.length-1 && activeCampaigns[campId] && activeCampaigns[campId].running) await sleep(cfg.EMAIL_DELAY_SECONDS*1000);
   }
   const db3=getDB(); const ci3=db3.campaigns.findIndex(c=>c.id===campId);
   if (ci3!==-1&&db3.campaigns[ci3].status==='running') { db3.campaigns[ci3].status='completed'; saveDB(db3); }
