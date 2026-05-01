@@ -860,6 +860,17 @@ code { font-family: var(--mono); background: rgba(255,255,255,.06); padding: 2px
           </div>
         </div>
 
+        <div class="card" style="margin-bottom:20px">
+          <div class="card-header"><h2>🔌 Test SMTP Connection</h2></div>
+          <p class="form-hint" style="margin-bottom:16px;color:var(--muted);line-height:1.7">
+            Verifies your Gmail App Password is working right now. Run this first if emails aren't sending.
+          </p>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <button class="btn btn-primary" id="smtp-test-btn" onclick="testSmtp()">🔌 Test SMTP</button>
+            <span id="smtp-test-result" style="font-size:13px"></span>
+          </div>
+        </div>
+
         <div class="card">
           <div class="card-header"><h2>📋 Output</h2></div>
           <pre id="dep-output" style="background:#0a0a0a;border:1px solid var(--border);border-radius:8px;padding:14px;font-family:monospace;font-size:12px;color:#9fd;white-space:pre-wrap;min-height:120px;max-height:400px;overflow:auto;margin:0">— Run a command to see output —</pre>
@@ -1638,6 +1649,28 @@ async function doNpmInstall() {
     appendDeployOut('✗ ERROR', e.message);
     toast('Install failed: '+e.message, 'err');
   } finally { btn.innerHTML='📦 Run npm install'; btn.disabled=false; }
+}
+
+async function testSmtp() {
+  const btn=el('smtp-test-btn'); const res=el('smtp-test-result');
+  btn.innerHTML='<span class="spin"></span> Testing…'; btn.disabled=true;
+  res.textContent=''; res.style.color='var(--muted)';
+  try {
+    const r=await api('/api/test-smtp');
+    if(r.ok) {
+      res.textContent='✅ ' + r.message;
+      res.style.color='var(--green)';
+      toast('SMTP OK', 'ok');
+    } else {
+      res.textContent='❌ ' + r.error;
+      res.style.color='var(--red)';
+      toast('SMTP failed: '+r.error,'err');
+    }
+  } catch(e) {
+    res.textContent='❌ ' + e.message;
+    res.style.color='var(--red)';
+    toast('SMTP test failed','err');
+  } finally { btn.innerHTML='🔌 Test SMTP'; btn.disabled=false; }
 }
 </script>
 </body>

@@ -486,6 +486,23 @@ app.get('/api/campaigns/:id/followups', auth, (req, res) => {
   res.json(rows);
 });
 
+// ─── SMTP connectivity test ──────────────────────────────────────────────────
+// GET /api/test-smtp — verifies Gmail credentials work right now
+app.get('/api/test-smtp', auth, async (req, res) => {
+  const db = getDB();
+  const user = db.users.find(u => u.id === req.user.id);
+  if (!user || !user.email || !user.password)
+    return res.status(400).json({ ok: false, error: 'No email/password set in account settings' });
+  try {
+    const tr = createMailTransport(user.email, user.password);
+    await tr.verify();
+    tr.close();
+    res.json({ ok: true, message: `SMTP connected OK as ${user.email}` });
+  } catch (err) {
+    res.json({ ok: false, error: err.message });
+  }
+});
+
 // ─── Manual follow-up send ───────────────────────────────────────────────────
 // POST /api/campaigns/:id/send-followups
 // Body: { step: 1-5, emailIds: ['id1','id2',...] }
@@ -562,9 +579,19 @@ app.post('/api/campaigns/:id/send-followups', auth, async (req, res) => {
           const tr = createMailTransport(uNow.email, uNow.password);
           await tr.sendMail(buildMailOptions(`${uNow.name} <${uNow.email}>`, eNow.email, subj, body, html, sigB64, sigMime, threadOpts));
           try { tr.close(); } catch(_) {}
-          console.log(`  ↳ Manual FU${stepNum} → ${eNow.email}`);
+          console.log(`[FU]  ↳ OK → ${eNow.email}`);
         } catch (sendErr) {
-          console.error(`  ↳ Manual FU${stepNum} failed ${eNow.email}: ${sendErr.message}`);
+          console.error(`[FU]  ↳ SMTP ERROR ${eNow.email}: ${sendErr.message}`);
+          // Write error to campaign log so it's visible in the UI
+          try {
+            const dbErr = getDB();
+            const campErr = dbErr.campaigns.find(c => c.id === camp.id);
+            if (campErr) {
+              if (!campErr.log) campErr.log = [];
+              campErr.log.push({ time: new Date().toISOString(), msg: `❌ FU${stepNum} SMTP error → ${eNow.email}: ${sendErr.message}`, type: 'error' });
+              saveDB(dbErr);
+            }
+          } catch(_) {}
           continue;
         }
 
@@ -585,10 +612,19 @@ app.post('/api/campaigns/:id/send-followups', auth, async (req, res) => {
         }
         await sleep(45000); // 45s delay between sends
       } catch (err) {
-        console.error('Manual FU error:', err.message);
+        console.error('[FU] Unexpected error:', err.message);
+        try {
+          const dbErr = getDB();
+          const campErr = dbErr.campaigns.find(c => c.id === camp.id);
+          if (campErr) {
+            if (!campErr.log) campErr.log = [];
+            campErr.log.push({ time: new Date().toISOString(), msg: `❌ FU${stepNum} unexpected error: ${err.message}`, type: 'error' });
+            saveDB(dbErr);
+          }
+        } catch(_) {}
       }
     }
-    console.log(`  ✅ Manual FU${stepNum} batch complete`);
+    console.log(`[FU] ✅ Manual FU${stepNum} batch complete`);
   })();
 });
 
