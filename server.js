@@ -493,13 +493,15 @@ app.get('/api/test-smtp', auth, async (req, res) => {
   const user = db.users.find(u => u.id === req.user.id);
   if (!user || !user.email || !user.password)
     return res.status(400).json({ ok: false, error: 'No email/password set in account settings' });
+  const loadedPort = cfg.SMTP_PORT;
+  const loadedHost = cfg.SMTP_HOST;
   try {
     const tr = createMailTransport(user.email, user.password);
     await tr.verify();
     tr.close();
-    res.json({ ok: true, message: `SMTP connected OK as ${user.email}` });
+    res.json({ ok: true, message: `✅ SMTP OK on ${loadedHost}:${loadedPort} as ${user.email}` });
   } catch (err) {
-    res.json({ ok: false, error: err.message });
+    res.json({ ok: false, error: `[loaded port: ${loadedPort}] ${err.message}` });
   }
 });
 
